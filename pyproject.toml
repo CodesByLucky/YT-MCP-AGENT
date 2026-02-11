@@ -1,0 +1,16 @@
+[project]
+name = "yt-mcp-agent"
+version = "0.1.0"
+description = "YouTube video agent using MCP and OpenRouter for transcript extraction and content generation"
+readme = "README.md"
+requires-python = ">=3.13"
+authors = [
+    { name = "Lucky" },
+]
+dependencies = [
+    "mcp[cli]>=1.15.0",
+    "openai>=1.109.1",
+    "openai-agents>=0.3.3",
+    "python-dotenv>=1.1.1",
+    "youtube-transcript-api>=1.2.2",
+]
