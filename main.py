@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # --- Configuration ---
-MODEL = os.getenv("OPENAI_MODEL", "openai/gpt-oss-120b:free")
+MODEL = os.getenv("OPENAI_MODEL", "meta-llama/llama-3.3-70b-instruct:free")
 
 client = AsyncOpenAI(
     base_url=os.getenv("OPENAI_BASE_URL", "https://openrouter.ai/api/v1"),
@@ -48,6 +48,7 @@ async def run(mcp_server: MCPServer):
         model=model,
     )
 
+    # Let the SDK manage conversation history
     input_items = []
 
     print("=== YouTube Agent ===")
@@ -77,29 +78,24 @@ async def run(mcp_server: MCPServer):
                     print(event.data.delta, end="", flush=True)
                 elif event.type == "run_item_stream_event":
                     if event.item.type == "tool_call_item":
-                        name = event.item.raw_item.name
-                        if name == "fetch_video_transcript":
+                        tool_name = event.item.raw_item.name
+                        if tool_name == "fetch_video_transcript":
                             print("\n-- Fetching transcript...")
-                        elif name == "fetch_intstructions":
+                        elif tool_name == "fetch_intstructions":
                             print("\n-- Fetching instructions...")
                         else:
-                            print(f"\n-- Calling {name}...")
+                            print(f"\n-- Calling {tool_name}...")
                     elif event.item.type == "tool_call_output_item":
-                        input_items.append(
-                            {"content": event.item.output, "role": "user"}
-                        )
                         print("-- Done.")
-                    elif event.item.type == "message_output_item":
-                        input_items.append(
-                            {
-                                "content": event.item.raw_item.content[0].text,
-                                "role": "assistant",
-                            }
-                        )
+
+            # Use the SDK's built-in method to get proper conversation history
+            input_items = result.to_input_list()
 
             print("\n")
         except Exception as e:
-            print(f"\n\n[Error] {e}\nPlease try again.\n")
+            import traceback
+            traceback.print_exc()
+            print(f"\n[Error] {e}\nPlease try again.\n")
 
 
 if __name__ == "__main__":
