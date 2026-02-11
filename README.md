@@ -45,7 +45,7 @@ An AI-powered YouTube video assistant that extracts transcripts and generates co
    ```env
    OPENAI_API_KEY=sk-or-v1-your-key-here
    OPENAI_BASE_URL=https://openrouter.ai/api/v1
-   OPENAI_MODEL=openai/gpt-oss-120b:free
+   OPENAI_MODEL=meta-llama/llama-3.3-70b-instruct:free
    ```
 
    > **Note:** Free models require your OpenRouter [privacy settings](https://openrouter.ai/settings/privacy) to allow data sharing with providers.
@@ -59,7 +59,7 @@ An AI-powered YouTube video assistant that extracts transcripts and generates co
 
 ```
 === YouTube Agent ===
-Model: openai/gpt-oss-120b:free
+Model: meta-llama/llama-3.3-70b-instruct:free
 Type 'exit' to quit
 
 User: Summarize this: https://www.youtube.com/watch?v=dQw4w9WgXcQ
@@ -98,9 +98,9 @@ Edit the `OPENAI_MODEL` value in `.env` to use any OpenRouter model:
 
 ```env
 # Free models with tool calling support
-OPENAI_MODEL=openai/gpt-oss-120b:free
 OPENAI_MODEL=meta-llama/llama-3.3-70b-instruct:free
 OPENAI_MODEL=mistralai/mistral-small-3.1-24b-instruct:free
+OPENAI_MODEL=qwen/qwen3-235b-a22b:free
 
 # Paid models (better reliability)
 OPENAI_MODEL=openai/gpt-4o
