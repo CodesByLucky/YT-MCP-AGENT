@@ -1,17 +1,26 @@
+"""YouTube video agent: OpenAI Agents SDK + an MCP tool server, via OpenRouter."""
+import asyncio
 import os
+import sys
+from pathlib import Path
 
 # Disable OpenAI tracing (not compatible with OpenRouter)
 os.environ["OPENAI_AGENTS_DISABLE_TRACING"] = "1"
 
 from agents import Agent, Runner
-from agents.mcp import MCPServerStdio, MCPServer
+from agents.mcp import MCPServer, MCPServerStdio
 from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
+from dotenv import load_dotenv
 from openai import AsyncOpenAI
 from openai.types.responses import ResponseTextDeltaEvent
-import asyncio
-from dotenv import load_dotenv
 
 load_dotenv()
+
+ROOT = Path(__file__).resolve().parent
+TOOL_STATUS = {
+    "fetch_video_transcript": "Fetching transcript...",
+    "fetch_instructions": "Fetching instructions...",
+}
 
 # --- Configuration ---
 MODEL = os.getenv("OPENAI_MODEL", "meta-llama/llama-3.3-70b-instruct:free")
@@ -32,7 +41,7 @@ model = OpenAIChatCompletionsModel(model=MODEL, openai_client=client)
 async def main():
     async with MCPServerStdio(
         name="YouTube MCP Server",
-        params={"command": "uv", "args": ["run", "mcp-server/yt-mcp.py"]},
+        params={"command": "uv", "args": ["run", "mcp-server/yt-mcp.py"], "cwd": str(ROOT)},
     ) as server:
         await run(server)
 
@@ -56,7 +65,11 @@ async def run(mcp_server: MCPServer):
     print("Type 'exit' to quit\n")
 
     while True:
-        user_input = input("User: ").strip()
+        try:
+            user_input = input("User: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\nGoodbye!")
+            break
 
         if user_input.lower() in ["exit", "quit", "bye"]:
             print("\nGoodbye!")
@@ -79,12 +92,7 @@ async def run(mcp_server: MCPServer):
                 elif event.type == "run_item_stream_event":
                     if event.item.type == "tool_call_item":
                         tool_name = event.item.raw_item.name
-                        if tool_name == "fetch_video_transcript":
-                            print("\n-- Fetching transcript...")
-                        elif tool_name == "fetch_intstructions":
-                            print("\n-- Fetching instructions...")
-                        else:
-                            print(f"\n-- Calling {tool_name}...")
+                        print(f"\n-- {TOOL_STATUS.get(tool_name, f'Calling {tool_name}...')}")
                     elif event.item.type == "tool_call_output_item":
                         print("-- Done.")
 
@@ -93,10 +101,11 @@ async def run(mcp_server: MCPServer):
 
             print("\n")
         except Exception as e:
-            import traceback
-            traceback.print_exc()
+            input_items.pop()  # drop the failed turn so a retry starts clean
             print(f"\n[Error] {e}\nPlease try again.\n")
 
 
 if __name__ == "__main__":
+    if not os.getenv("OPENAI_API_KEY"):
+        sys.exit("OPENAI_API_KEY is not set. Copy .env.example to .env and add your OpenRouter key.")
     asyncio.run(main())

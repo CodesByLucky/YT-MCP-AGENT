@@ -1,86 +1,87 @@
+"""MCP server exposing YouTube transcript and task-instruction tools.
+
+Run over stdio by the agent in main.py. Keeping tools here, outside the
+agent, means new capabilities can be added without changing agent code.
+"""
+import logging
+import re
+from pathlib import Path
+
 from mcp.server.fastmcp import FastMCP
 from youtube_transcript_api import YouTubeTranscriptApi
-import re
-import os
 
-# Suppress MCP INFO logs to reduce console output
-import logging
+# Keep MCP INFO logs out of the chat output
 logging.getLogger("mcp").setLevel(logging.WARNING)
 
-# Create an MCP server
+PROMPTS_DIR = Path(__file__).resolve().parent / "prompts"
+AVAILABLE_INSTRUCTIONS = ("write_blog_post", "write_social_post", "write_video_chapters")
+VIDEO_ID_PATTERN = re.compile(r"(?:v=|/)([0-9A-Za-z_-]{11})")
+
 mcp = FastMCP("yt-mcp")
 
-# Create prompt
+
+def extract_video_id(url: str) -> str:
+    """Return the 11-character video ID from watch, youtu.be, shorts or embed URLs."""
+    match = VIDEO_ID_PATTERN.search(url)
+    if not match:
+        raise ValueError(f"Could not find a YouTube video ID in: {url}")
+    return match.group(1)
+
+
+def format_timestamp(seconds: float) -> str:
+    seconds = int(seconds)
+    hours, remainder = divmod(seconds, 3600)
+    minutes, secs = divmod(remainder, 60)
+    return f"{hours}:{minutes:02d}:{secs:02d}" if hours else f"{minutes:02d}:{secs:02d}"
+
+
 @mcp.prompt()
 def system_prompt() -> str:
-    """Instructions for YouTube video agent"""
-    script_dir = os.path.dirname(__file__)
-    prompt_path = os.path.join(script_dir, "prompts", "system_instructions.md")
-    with open(prompt_path, "r") as file:
-        return file.read()
+    """Instructions for the YouTube video agent."""
+    return (PROMPTS_DIR / "system_instructions.md").read_text(encoding="utf-8")
 
-# Create tool
+
 @mcp.tool()
 def fetch_video_transcript(url: str) -> str:
     """
-    Extract transcript with timestamps from a YouTube video URL and format it for LLM consumption
-    
+    Fetch the transcript of a YouTube video with timestamps.
+
     Args:
-        url (str): YouTube video URL
-        
+        url: YouTube video URL (watch, youtu.be, shorts or embed link)
+
     Returns:
-        str: Formatted transcript with timestamps, where each entry is on a new line
-             in the format: "[MM:SS] Text"
+        The canonical video URL on the first line, then one transcript entry per
+        line as "[MM:SS] text" (or "[H:MM:SS] text" for long videos). To link to a
+        moment, append "&t=<seconds>s" to the video URL.
     """
-    # Extract video ID from URL
-    video_id_pattern = r'(?:v=|\/)([0-9A-Za-z_-]{11}).*'
-    video_id_match = re.search(video_id_pattern, url)
-    
-    if not video_id_match:
-        raise ValueError("Invalid YouTube URL")
-    
-    video_id = video_id_match.group(1)
-    
+    video_id = extract_video_id(url)
     try:
-        ytt_api = YouTubeTranscriptApi()
-        transcript = ytt_api.fetch(video_id)
-        
-        # Format each entry with timestamp and text
-        formatted_entries = []
-        for entry in transcript:
-            # Convert seconds to MM:SS format
-            minutes = int(entry.start // 60)
-            seconds = int(entry.start % 60)
-            timestamp = f"[{minutes:02d}:{seconds:02d}]"
-            
-            formatted_entry = f"{timestamp} {entry.text}"
-            formatted_entries.append(formatted_entry)
-        
-        # Join all entries with newlines
-        return "\n".join(formatted_entries)
-    
-    except Exception as e:
-        raise Exception(f"Error fetching transcript: {str(e)}")
+        transcript = YouTubeTranscriptApi().fetch(video_id)
+    except Exception as exc:
+        raise RuntimeError(f"Could not fetch a transcript for video {video_id}: {exc}") from exc
+
+    lines = [f"Video URL: https://www.youtube.com/watch?v={video_id}"]
+    lines += [f"[{format_timestamp(entry.start)}] {entry.text}" for entry in transcript]
+    return "\n".join(lines)
+
 
 @mcp.tool()
-def fetch_intstructions(prompt_name: str) -> str:
+def fetch_instructions(prompt_name: str) -> str:
     """
-    Fetch instructions for a given prompt name from the prompts/ directory
+    Fetch step-by-step instructions for a content task.
 
     Args:
-        prompt_name (str): Name of the prompt to fetch instructions for
-        Available prompts: 
-            - write_blog_post
-            - write_social_post
-            - write_video_chapters
+        prompt_name: One of write_blog_post, write_social_post, write_video_chapters
 
     Returns:
-        str: Instructions for the given prompt
+        The instructions for that task, in markdown.
     """
-    script_dir = os.path.dirname(__file__)
-    prompt_path = os.path.join(script_dir, "prompts", f"{prompt_name}.md")
-    with open(prompt_path, "r") as f:
-        return f.read()
+    if prompt_name not in AVAILABLE_INSTRUCTIONS:
+        raise ValueError(
+            f"Unknown prompt '{prompt_name}'. Use one of: {', '.join(AVAILABLE_INSTRUCTIONS)}"
+        )
+    return (PROMPTS_DIR / f"{prompt_name}.md").read_text(encoding="utf-8")
+
 
 if __name__ == "__main__":
-    mcp.run(transport='stdio')
+    mcp.run(transport="stdio")
